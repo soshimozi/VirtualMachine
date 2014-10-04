@@ -1,0 +1,6 @@
+c:\users\volcano\documents\visual studio 2012\Projects\SAAssembler\SAAssembler\obj\Debug\MacroAssembler.csprojResolveAssemblyReference.cache
+c:\users\volcano\documents\visual studio 2012\Projects\SAAssembler\SAAssembler\bin\Debug\MacroAssembler.exe.config
+c:\users\volcano\documents\visual studio 2012\Projects\SAAssembler\SAAssembler\bin\Debug\MacroAssembler.exe
+c:\users\volcano\documents\visual studio 2012\Projects\SAAssembler\SAAssembler\bin\Debug\MacroAssembler.pdb
+c:\users\volcano\documents\visual studio 2012\Projects\SAAssembler\SAAssembler\obj\Debug\MacroAssembler.exe
+c:\users\volcano\documents\visual studio 2012\Projects\SAAssembler\SAAssembler\obj\Debug\MacroAssembler.pdb

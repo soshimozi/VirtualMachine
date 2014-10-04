@@ -1,0 +1,6 @@
+c:\users\volcano\documents\visual studio 2012\Projects\SAAssembler\SAAssembler\bin\Debug\SAAssembler.exe.config
+c:\users\volcano\documents\visual studio 2012\Projects\SAAssembler\SAAssembler\bin\Debug\SAAssembler.exe
+c:\users\volcano\documents\visual studio 2012\Projects\SAAssembler\SAAssembler\bin\Debug\SAAssembler.pdb
+c:\users\volcano\documents\visual studio 2012\Projects\SAAssembler\SAAssembler\obj\Debug\SAAssembler.csprojResolveAssemblyReference.cache
+c:\users\volcano\documents\visual studio 2012\Projects\SAAssembler\SAAssembler\obj\Debug\SAAssembler.exe
+c:\users\volcano\documents\visual studio 2012\Projects\SAAssembler\SAAssembler\obj\Debug\SAAssembler.pdb
