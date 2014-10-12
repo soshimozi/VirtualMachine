@@ -31,6 +31,15 @@ namespace MacroAssembler
             Ch = ' ';
         }
 
+        public SourceHandler(StreamReader src, StreamWriter lst, string version)
+        {
+            _src = src;
+            Lst = lst;
+
+            Lst.Write("{0}\n\n", version);
+            Ch = ' ';
+        }
+
         public void Nextch()
         {
             if (Ch == '\0') return; // input exhausted

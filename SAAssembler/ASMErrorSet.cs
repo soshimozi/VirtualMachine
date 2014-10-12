@@ -14,6 +14,7 @@
         AsmBadlabel,
         AsmInvalidchar,
         AsmInvalidquote,
+        AsmMisMatchParen,
         AsmOverflow
     }
 

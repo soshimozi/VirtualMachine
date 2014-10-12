@@ -4,36 +4,12 @@ using System.IO;
 namespace MacroAssembler
 {
 
-    public class Assembler : IAssembler
+    public class Assembler : AssemblerBase
     {
         const bool Nocodelisted = false;
         const bool Codelisted = true;
 
-        private enum Directives
-        {
-            AsErr = 61, // erroneous opcode
-            AsNul = 62, // blank opcode
-            AsBeg = 63, // introduce program
-            AsEnd = 64, // end of source
-            AsMac = 65, // introduce macro
-            AsDs = 66, // define storage
-            AsEqu = 67, // equate
-            AsOrg = 68, // set location counter
-            AsIf = 69, // conditional
-            AsDC = 70 // define constant byte
-        }
 
-
-        private struct Optableval
-        {
-            public string Spelling;
-            public byte Byt;
-        }
-
-        private struct Objlines
-        {
-            public byte Location, Opcode, Address;
-        }
 
         private static readonly string[] ErrorMsg =
         {
@@ -52,46 +28,48 @@ namespace MacroAssembler
             " - number too large"
         };
 
-        private SourceHandler _srce;
-        private SyntaxAnalyzer _parser;
+        //private SourceHandler _srce;
+        //private SyntaxAnalyzer _parser;
+        
         private SymbolTable _table;
+        
         private readonly IVirtualMachine _machine;
         private MacroAnalyzer _macro;
 
-        private readonly Optableval[] _optable = new Optableval[256];
+        private readonly OpCodeTableValue[] _optable = new OpCodeTableValue[256];
         private int _opcodes; // number of opcodes actually defined
-        private Objlines _objline; // current line as assembled
+        private AssembledLine _objline; // current line as assembled
         private byte _location; // location counter
         private bool _assembling; // monitor progress of assembly
         private bool _include; // handle conditional assembly
 
         // Instantiates version of the assembler to process sourcename, creating
         // listings in listname, and generating code for associated machine M
-        public Assembler(IVirtualMachine m)
+        public Assembler(IVirtualMachine m, StreamReader reader, StreamWriter writer, string version) : base(reader, writer, version)
         {
             _machine = m;
 
             // enter opcodes and mnemonics in ALPHABETIC order
             // done this way for ease of modification later
             _opcodes = 0; // bogus one for erroneous data
-            Enter("Error   ",  (int)Directives.AsErr); // for lines with no opcode
-            Enter("   ", (int)Directives.AsNul); Enter("ACI", (int)McOpcodes.McAci); Enter("ACX", (int)McOpcodes.McAcx);
+            Enter("Error   ", (int)AssemblerDirectives.AsErr); // for lines with no opcode
+            Enter("   ", (int)AssemblerDirectives.AsNul); Enter("ACI", (int)McOpcodes.McAci); Enter("ACX", (int)McOpcodes.McAcx);
             Enter("ADC", (int)McOpcodes.McAdc); Enter("ADD", (int)McOpcodes.McAdd); Enter("ADI", (int)McOpcodes.McAdi);
             Enter("ADX", (int)McOpcodes.McAdx); Enter("ANA", (int)McOpcodes.McAna); Enter("ANI", (int)McOpcodes.McAni);
             Enter("ANX", (int)McOpcodes.McAnx); Enter("BCC", (int)McOpcodes.McBcc); Enter("BCS", (int)McOpcodes.McBcs);
-            Enter("BEG", (int)Directives.AsBeg); Enter("BNG", (int)McOpcodes.McBng); Enter("BNZ", (int)McOpcodes.McBnz);
+            Enter("BEG", (int)AssemblerDirectives.AsBeg); Enter("BNG", (int)McOpcodes.McBng); Enter("BNZ", (int)McOpcodes.McBnz);
             Enter("BPZ", (int)McOpcodes.McBpz); Enter("BRN", (int)McOpcodes.McBrn); Enter("BZE", (int)McOpcodes.McBze);
             Enter("CLA", (int)McOpcodes.McCla); Enter("CLC", (int)McOpcodes.McClc); Enter("CLX", (int)McOpcodes.McClx);
             Enter("CMC", (int)McOpcodes.McCmc); Enter("CMP", (int)McOpcodes.McCmp); Enter("CPI", (int)McOpcodes.McCpi);
-            Enter("CPX", (int)McOpcodes.McCpx); Enter("DC", (int)Directives.AsDC); Enter("DEC", (int)McOpcodes.McDec);
-            Enter("DEX", (int)McOpcodes.McDex); Enter("DS", (int)Directives.AsDs); Enter("END", (int)Directives.AsEnd);
-            Enter("EQU", (int)Directives.AsEqu); Enter("HLT", (int)McOpcodes.McHlt); Enter("IF", (int)Directives.AsIf);
+            Enter("CPX", (int)McOpcodes.McCpx); Enter("DC", (int)AssemblerDirectives.AsDC); Enter("DEC", (int)McOpcodes.McDec);
+            Enter("DEX", (int)McOpcodes.McDex); Enter("DS", (int)AssemblerDirectives.AsDs); Enter("END", (int)AssemblerDirectives.AsEnd);
+            Enter("EQU", (int)AssemblerDirectives.AsEqu); Enter("HLT", (int)McOpcodes.McHlt); Enter("IF", (int)AssemblerDirectives.AsIf);
             Enter("INA", (int)McOpcodes.McIna); Enter("INB", (int)McOpcodes.McInb); Enter("INC", (int)McOpcodes.McInc);
             Enter("INH", (int)McOpcodes.McInh); Enter("INI", (int)McOpcodes.McIni); Enter("INX", (int)McOpcodes.McInx);
             Enter("JSR", (int)McOpcodes.McJsr); Enter("LDA", (int)McOpcodes.McLda); Enter("LDI", (int)McOpcodes.McLdi);
             Enter("LDX", (int)McOpcodes.McLdx); Enter("LSI", (int)McOpcodes.McLsi); Enter("LSP", (int)McOpcodes.McLsp);
-            Enter("MAC", (int)Directives.AsMac); Enter("NOP", (int)McOpcodes.McNop); Enter("ORA", (int)McOpcodes.McOra);
-            Enter("ORG", (int)Directives.AsOrg); Enter("ORI", (int)McOpcodes.McOri); Enter("ORX", (int)McOpcodes.McOrx);
+            Enter("MAC", (int)AssemblerDirectives.AsMac); Enter("NOP", (int)McOpcodes.McNop); Enter("ORA", (int)McOpcodes.McOra);
+            Enter("ORG", (int)AssemblerDirectives.AsOrg); Enter("ORI", (int)McOpcodes.McOri); Enter("ORX", (int)McOpcodes.McOrx);
             Enter("OTA", (int)McOpcodes.McOta); Enter("OTB", (int)McOpcodes.McOtb); Enter("OTC", (int)McOpcodes.McOtc);
             Enter("OTH", (int)McOpcodes.McOth); Enter("OTI", (int)McOpcodes.McOti); Enter("POP", (int)McOpcodes.McPop);
             Enter("PSH", (int)McOpcodes.McPsh); Enter("RET", (int)McOpcodes.McRet); Enter("SBC", (int)McOpcodes.McSbc);
@@ -99,10 +77,13 @@ namespace MacroAssembler
             Enter("SCX", (int)McOpcodes.McScx); Enter("SHL", (int)McOpcodes.McShl); Enter("SHR", (int)McOpcodes.McShr);
             Enter("STA", (int)McOpcodes.McSta); Enter("STX", (int)McOpcodes.McStx); Enter("SUB", (int)McOpcodes.McSub);
             Enter("TAX", (int)McOpcodes.McTax);
+
+            _macro = new MacroAnalyzer();
+            _table = new SymbolTable(Srce);
         }
 
         // Assemble single srcline
-        public void AssembleLine(SaUnpackedlines srcline, out bool failure)
+        public override void AssembleLine(SaUnpackedlines srcline, out bool failure)
         {
             failure = false;
 
@@ -132,39 +113,39 @@ namespace MacroAssembler
             _objline.Address = 0;
             _objline.Opcode = Bytevalue(srcline.Mnemonic);
 
-            if (_objline.Opcode == (int)Directives.AsErr) // check various constraints
+            if (_objline.Opcode == (int)AssemblerDirectives.AsErr) // check various constraints
                 srcline.Errors.Incl((int)AsmErrors.AsmInvalidcode);
-            else if (_objline.Opcode > (int)Directives.AsMac ||
-                     _objline.Opcode > (int)McOpcodes.McHlt && _objline.Opcode < (int)Directives.AsErr)
+            else if (_objline.Opcode > (int)AssemblerDirectives.AsMac ||
+                     _objline.Opcode > (int)McOpcodes.McHlt && _objline.Opcode < (int)AssemblerDirectives.AsErr)
             {
                 if (srcline.Address.Length == 0) srcline.Errors.Incl((int)AsmErrors.AsmNoaddress);
             }
-            else if (_objline.Opcode != (int)Directives.AsMac && srcline.Address.Length != 0)
+            else if (_objline.Opcode != (int)AssemblerDirectives.AsMac && srcline.Address.Length != 0)
                 srcline.Errors.Incl((int)AsmErrors.AsmHasaddress);
 
-            if (_objline.Opcode >= (int)Directives.AsErr && _objline.Opcode <= (int)Directives.AsDC)
+            if (_objline.Opcode >= (int)AssemblerDirectives.AsErr && _objline.Opcode <= (int)AssemblerDirectives.AsDC)
             {
                 switch (_objline.Opcode) // directives
                 {
-                    case (int)Directives.AsBeg:
+                    case (int)AssemblerDirectives.AsBeg:
                         _location = 0;
                         break;
-                    case (int)Directives.AsOrg:
+                    case (int)AssemblerDirectives.AsOrg:
                         Evaluate(srcline.Address, out _location, out undefined, out badaddress);
                         if (undefined) srcline.Errors.Incl((int)AsmErrors.AsmUndefinedlabel);
                         _objline.Location = _location;
                         break;
-                    case (int)Directives.AsDs:
+                    case (int)AssemblerDirectives.AsDs:
                         if (srcline.Labelled) _table.Enter(srcline.Labfield, _location);
                         Evaluate(srcline.Address, out _objline.Address, out undefined, out badaddress);
                         if (undefined) srcline.Errors.Incl((int)AsmErrors.AsmUndefinedlabel);
                         _location = (byte)((_location + _objline.Address) % 256);
                         break;
-                    case (int)Directives.AsNul:
-                    case (int)Directives.AsErr:
+                    case (int)AssemblerDirectives.AsNul:
+                    case (int)AssemblerDirectives.AsErr:
                         if (srcline.Labelled) _table.Enter(srcline.Labfield, _location);
                         break;
-                    case (int)Directives.AsEqu:
+                    case (int)AssemblerDirectives.AsEqu:
                         Evaluate(srcline.Address, out _objline.Address, out undefined, out badaddress);
                         if (srcline.Labelled)
                             _table.Enter(srcline.Labfield, _objline.Address);
@@ -172,21 +153,21 @@ namespace MacroAssembler
                             srcline.Errors.Incl((int)AsmErrors.AsmUnlabelled);
                         if (undefined) srcline.Errors.Incl((int)AsmErrors.AsmUndefinedlabel);
                         break;
-                    case (int)Directives.AsDC:
+                    case (int)AssemblerDirectives.AsDC:
                         if (srcline.Labelled) _table.Enter(srcline.Labfield, _location);
                         Evaluate(srcline.Address, out _objline.Address, out undefined, out badaddress);
                         _machine.Mem[_location] = _objline.Address;
                         _location = (byte)((_location + 1) % 256);
                         break;
-                    case (int)Directives.AsIf:
+                    case (int)AssemblerDirectives.AsIf:
                         Evaluate(srcline.Address, out _objline.Address, out undefined, out badaddress);
                         if (undefined) srcline.Errors.Incl((int)AsmErrors.AsmUndefinedlabel);
                         _include = (_objline.Address != 0);
                         break;
-                    case (int)Directives.AsMac:
+                    case (int)AssemblerDirectives.AsMac:
                         Definemacro(srcline, out failure);
                         break;
-                    case (int)Directives.AsEnd:
+                    case (int)AssemblerDirectives.AsEnd:
                         _assembling = false;
                         break;
                 }
@@ -208,27 +189,27 @@ namespace MacroAssembler
             }
 
             if (badaddress) srcline.Errors.Incl((int)AsmErrors.AsmInvalidaddress);
-            if (_objline.Opcode != (int)Directives.AsMac) Listsourceline(srcline, Codelisted, out failure);
+            if (_objline.Opcode != (int)AssemblerDirectives.AsMac) Listsourceline(srcline, Codelisted, out failure);
         }
 
         // Assembles and lists program.
         // Assembled code is dumped to file for later interpretation, and left
         // in pseudo-machine memory for immediate interpretation if desired.
         // Returns errors = true if assembly fails
-        public void Assemble(string sourcefile, string listfile, string version, ref bool errors)
+        public override void Assemble(ref bool errors)
         {
-            _srce = new SourceHandler(sourcefile, listfile, version);
-            var lex = new LexicalAnalyzer(_srce);
-            _parser = new SyntaxAnalyzer(lex);
-            _table = new SymbolTable(_srce);
+            //_srce = new SourceHandler(sourcefile, listfile, version);
+            //var lex = new LexicalAnalyzer(_srce);
+            //_parser = new SyntaxAnalyzer(lex);
+            _table = new SymbolTable(Srce);
             _macro = new MacroAnalyzer();
 
-            _srce.Lst.Write("(One Pass Macro Assembler)\n\n");
+            Srce.Lst.Write("(One Pass Macro Assembler)\n\n");
             Firstpass(ref errors);
-            _machine.Listcode(_srce.Lst);
+            _machine.Listcode(Srce.Lst);
 
-            _srce.Dispose();
-            _srce = null;
+            Srce.Dispose();
+            Srce = null;
         }
 
         private void Firstpass(ref bool errors)
@@ -240,7 +221,7 @@ namespace MacroAssembler
             while (_assembling)
             {
                 SaUnpackedlines srcline;
-                _parser.Parse(out srcline);
+                Parser.Parse(out srcline);
                 AssembleLine(srcline, out errors);
             }
 
@@ -280,7 +261,7 @@ namespace MacroAssembler
             {
                 case SaTermkinds.SaAbsent:
                 case SaTermkinds.SaNumeric:
-                    value = (byte)(term.Number%256);
+                    value = (byte)(term.Value%256);
                     break;
                 case SaTermkinds.SaStar:
                     value = _location;
@@ -343,28 +324,28 @@ namespace MacroAssembler
             if (allerrors.Isempty()) return;
             failure = true;
 
-            _srce.Lst.Write("Next line has errors");
+            Srce.Lst.Write("Next line has errors");
             for (var error = (int) AsmErrors.AsmInvalidcode; error <= (int) AsmErrors.AsmOverflow; error++)
             {
-                if(allerrors.Memb(error)) _srce.Lst.WriteLine("{0}", ErrorMsg[error]);
+                if(allerrors.Memb(error)) Srce.Lst.WriteLine("{0}", ErrorMsg[error]);
             }
         }
 
         // List generated code bytes on source listing
         private void Listcode()
         {
-            _srce.Writehex(_objline.Location, 4);
+            Srce.Writehex(_objline.Location, 4);
 
-            if(_objline.Opcode >= (int)Directives.AsErr && _objline.Opcode <= (int)Directives.AsIf)
-                _srce.Lst.Write("       ");
+            if (_objline.Opcode >= (int)AssemblerDirectives.AsErr && _objline.Opcode <= (int)AssemblerDirectives.AsIf)
+                Srce.Lst.Write("       ");
             else if(_objline.Opcode <= (int)McOpcodes.McHlt)
-                _srce.Writehex(_objline.Opcode, 7);
-            else if (_objline.Opcode == (int)Directives.AsDs)
-                _srce.Writehex(_objline.Address, 7);
+                Srce.Writehex(_objline.Opcode, 7);
+            else if (_objline.Opcode == (int)AssemblerDirectives.AsDs)
+                Srce.Writehex(_objline.Address, 7);
             else
             {
-                _srce.Writehex(_objline.Opcode, 3);
-                _srce.Writehex(_objline.Address, 4);
+                Srce.Writehex(_objline.Opcode, 3);
+                Srce.Writehex(_objline.Address, 4);
             }
         }
 
@@ -376,24 +357,24 @@ namespace MacroAssembler
             if (coderequired) 
                 Listcode();
             else 
-                _srce.Lst.Write("           ");
+                Srce.Lst.Write("           ");
 
-            _srce.Writetext(srcline.Labfield, 9);
-            _srce.Writetext(srcline.Mnemonic, 9);
+            Srce.Writetext(srcline.Labfield, 9);
+            Srce.Writetext(srcline.Mnemonic, 9);
 
             int width = srcline.Address.Term[0].Name.Length;
-            _srce.Lst.Write(srcline.Address.Term[0].Name);
+            Srce.Lst.Write(srcline.Address.Term[0].Name);
 
             for (int i = 1; i < srcline.Address.Length; i++)
             {
                 width += srcline.Address.Term[i].Name.Length + 1;
-                _srce.Lst.Write(' ');
-                _srce.Lst.Write(srcline.Address.Term[i].Name);
+                Srce.Lst.Write(' ');
+                Srce.Lst.Write(srcline.Address.Term[i].Name);
             }
 
-            if (width < 30) _srce.Writetext(" ", 30 - width);
+            if (width < 30) Srce.Writetext(" ", 30 - width);
             
-            _srce.Lst.WriteLine("{0}", srcline.Comment);
+            Srce.Lst.WriteLine("{0}", srcline.Comment);
         }
 
         // Handle introduction of a macro (possibly nested)
@@ -424,19 +405,19 @@ namespace MacroAssembler
 
             do
             {
-                _parser.Parse(out srcline);
+                Parser.Parse(out srcline);
                 opcode = Bytevalue(srcline.Mnemonic);
 
-                if (opcode == (int)Directives.AsMac) // nested macro?
+                if (opcode == (int)AssemblerDirectives.AsMac) // nested macro?
                     Definemacro(srcline, out failure); // recursion handles it
                 else
                 {
                     Listsourceline(srcline, Nocodelisted, out failure);
-                    if (declared && opcode != (int)Directives.AsEnd && srcline.Errors.Isempty())
+                    if (declared && opcode != (int)AssemblerDirectives.AsEnd && srcline.Errors.Isempty())
                         _macro.Storeline(macro, srcline); // add to macro text
                 }
 
-            } while (opcode != (int)Directives.AsEnd);
+            } while (opcode != (int)AssemblerDirectives.AsEnd);
         }
 
         private static void Backpatch(byte[] m, byte loc, byte value, byte how)

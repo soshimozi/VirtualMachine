@@ -17,6 +17,8 @@ namespace MacroAssembler
         public LaSymtypes Sym; // class
         public StringBuilder Str = new StringBuilder(36, 36); // lexeme
         public int Num; // value if numeric
+        public bool IsWord;  // value is a word, not a byte
+        public bool IsImmediate;
     }
 
     public class LexicalAnalyzer
@@ -52,7 +54,36 @@ namespace MacroAssembler
                 return sym;
             }
 
-            if (Char.IsLetter(_srce.Ch))
+            if (_srce.Ch == '$')
+            {
+                sym.Str.Append('$');
+
+                // get a number
+                sym.Sym = LaSymtypes.LaNumsym;
+                _srce.Nextch();
+                GetNumber(sym, errors, 16);
+            }
+            else  if (_srce.Ch == '#')
+            {
+                sym.Str.Append('#');
+
+                // get a literal number
+                sym.Sym = LaSymtypes.LaNumsym;
+                sym.IsImmediate = true;
+
+                _srce.Nextch();
+
+                // is it hex?
+                if (_srce.Ch == '$')
+                {
+                    sym.Str.Append('$');
+
+                    _srce.Nextch();
+                    GetNumber(sym, errors, 16);
+                } else
+                    GetNumber(sym, errors, 10);
+
+            } else if (Char.IsLetter(_srce.Ch))
             {
                 sym.Sym = LaSymtypes.LaIdsym;
                 GetWord(sym);
@@ -60,7 +91,7 @@ namespace MacroAssembler
             else if (Char.IsDigit(_srce.Ch))
             {
                 sym.Sym = LaSymtypes.LaNumsym;
-                GetNumber(sym, errors);
+                GetNumber(sym, errors, 10);
             }
             else
                 switch (_srce.Ch)
@@ -73,16 +104,6 @@ namespace MacroAssembler
                     case '(':
                         sym.Sym = LaSymtypes.LaLeftParensym;
                         sym.Str.Append('(');
-                        _srce.Nextch();
-                        break;
-                    case '$':
-                        sym.Sym = LaSymtypes.LaDollarSignsym;
-                        sym.Str.Append('$');
-                        _srce.Nextch();
-                        break;
-                    case '#':
-                        sym.Sym = LaSymtypes.LaPounsym;
-                        sym.Str.Append('#');
                         _srce.Nextch();
                         break;
                     case ';':
@@ -139,15 +160,29 @@ namespace MacroAssembler
             }
         }
 
-        private void GetNumber(LaSymbols sym, Set errors)
+        private void GetNumber(LaSymbols sym, Set errors, int radix)
         // Assemble number and store its identifier in UPPERCASE for consistency
+            // radix should be 2, 8, 10, or 16
         {
             int length = 0;
-            while (Char.IsDigit(_srce.Ch))
+            while (Char.IsDigit(_srce.Ch) || (radix == 16 && _srce.Ch.IsXDigit()))
             {
-                sym.Num = sym.Num*10 + _srce.Ch - '0';
-                if (sym.Num > 255) errors.Incl((int) AsmErrors.AsmOverflow);
-                sym.Num %= 256;
+                if (radix == 16)
+                {
+                    var digit = 0;
+                    if (('a' <= _srce.Ch && _srce.Ch <= 'f') || ('A' <= _srce.Ch && _srce.Ch <= 'F'))
+                    {
+                        digit = (Char.ToUpper(_srce.Ch) - 'A') + 10;
+                    }
+                    else digit = (_srce.Ch - '0');
+
+                    sym.Num = sym.Num*16 + digit;
+                }
+                else
+                    sym.Num = sym.Num*radix + _srce.Ch - '0';
+
+                //if (sym.Num > 255) errors.Incl((int) AsmErrors.AsmOverflow);
+                //sym.Num %= 256;
                 if (length < AsmSlength)
                 {
                     sym.Str.Append(Char.ToUpper(_srce.Ch));
@@ -155,6 +190,8 @@ namespace MacroAssembler
                 }
                 _srce.Nextch();
             }
+
+            sym.IsWord = (sym.Str.Length > 3);
         }
 
         private void GetComment(LaSymbols sym)

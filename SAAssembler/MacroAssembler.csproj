@@ -41,6 +41,12 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Assembler6502.cs" />
+    <Compile Include="AssemblerBase.cs" />
+    <Compile Include="AssembledLine.cs" />
+    <Compile Include="Memory.cs" />
+    <Compile Include="NumberFormatter.cs" />
+    <Compile Include="OpCodeTableValue.cs" />
     <Compile Include="VirtualMachine6502.cs" />
     <Compile Include="ASMErrorSet.cs">
       <SubType>Code</SubType>

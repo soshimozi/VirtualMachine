@@ -13,20 +13,24 @@ namespace MacroAssembler
         SaComma,
         SaPlus,
         SaMinus,
-        SaStar
+        SaStar,
+        SaLParen,
+        SaRParen
     }
 
     public struct SaTerms
     {
         public SaTermkinds Kind;
-        public int Number; // value if known
+        public int Value; // value if known
         public String Name; // character representation
+        public bool IsImmediate;
+        public int Size;    // size, in bytes, of value
     }
 
     public class SaAddresses //: ICloneable
     {
         public byte Length; // number of fields
-        public SaTerms[] Term = new SaTerms[15];
+        public SaTerms[] Term = new SaTerms[32];
         //public object Clone()
         //{
         //    var newAddress = new SaAddresses();
@@ -70,7 +74,7 @@ namespace MacroAssembler
 
     public class SyntaxAnalyzer
     {
-        private const int SaMaxterms = 16;
+        private const int SaMaxterms = 32;
 
         private readonly LexicalAnalyzer _lex;
         private LaSymbols _sym;
@@ -83,6 +87,9 @@ namespace MacroAssembler
         public SaUnpackedlines Parse(out SaUnpackedlines srcline)
         {
             var startaddress = new Set((int) LaSymtypes.LaIdsym,(int) LaSymtypes.LaNumsym, (int) LaSymtypes.LaStarsym);
+            var addressmodes = new Set((int) LaSymtypes.LaLeftParensym);
+
+            startaddress += addressmodes;
 
             srcline = new SaUnpackedlines
             {
@@ -93,7 +100,7 @@ namespace MacroAssembler
             };
 
             srcline.Address.Term[0].Kind = SaTermkinds.SaAbsent;
-            srcline.Address.Term[0].Number = 0;
+            srcline.Address.Term[0].Value = 0;
             srcline.Address.Term[0].Name = "";
             srcline.Address.Length = 0;
 
@@ -144,24 +151,31 @@ namespace MacroAssembler
         // Unpack the addressfield of line into srcline
         private void Getaddress(SaUnpackedlines srcline)
         {
+            bool parenOpen = false;
+
             var allowed = new Set((int) LaSymtypes.LaIdsym, (int) LaSymtypes.LaNumsym, (int) LaSymtypes.LaStarsym);
 
+            allowed.Incl((int)LaSymtypes.LaLeftParensym);
             var possible = allowed +
-                           new Set((int) LaSymtypes.LaCommasym,(int) LaSymtypes.LaPlussym, (int) LaSymtypes.LaMinussym);
+                           new Set((int) LaSymtypes.LaCommasym, (int) LaSymtypes.LaPlussym,
+                               (int) LaSymtypes.LaMinussym);
+
+            possible.Incl((int)LaSymtypes.LaRightParensym);
 
             srcline.Address.Length = 0;
-            while (possible.Memb((int)_sym.Sym))
+            while (possible.Memb((int) _sym.Sym))
             {
-                if (!allowed.Memb((int)_sym.Sym))
-                    srcline.Errors.Incl((int)AsmErrors.AsmInvalidaddress);
+                if (!allowed.Memb((int) _sym.Sym))
+                    srcline.Errors.Incl((int) AsmErrors.AsmInvalidaddress);
                 if (srcline.Address.Length < SaMaxterms - 1)
                     srcline.Address.Length++;
                 else
-                    srcline.Errors.Incl((int)AsmErrors.AsmExcessfields);
+                    srcline.Errors.Incl((int) AsmErrors.AsmExcessfields);
 
                 srcline.Address.Term[srcline.Address.Length - 1].Name = _sym.Str.ToString();
-                srcline.Address.Term[srcline.Address.Length - 1].Number = _sym.Num;
-
+                srcline.Address.Term[srcline.Address.Length - 1].Value = _sym.Num;
+                srcline.Address.Term[srcline.Address.Length - 1].IsImmediate = _sym.IsImmediate;
+                srcline.Address.Term[srcline.Address.Length - 1].Size = _sym.IsWord ? 2 : 1;
                 switch (_sym.Sym)
                 {
                     case LaSymtypes.LaNumsym:
@@ -182,12 +196,31 @@ namespace MacroAssembler
                     case LaSymtypes.LaCommasym:
                         srcline.Address.Term[srcline.Address.Length - 1].Kind = SaTermkinds.SaComma;
                         break;
+                    case LaSymtypes.LaLeftParensym:
+                        srcline.Address.Term[srcline.Address.Length - 1].Kind = SaTermkinds.SaLParen;
+                        parenOpen = true;
+                        GetSym(srcline.Errors); // check trailing comment, parameters
+                        continue;
+                    case LaSymtypes.LaRightParensym:
+                        if (!parenOpen)
+                        {
+                            srcline.Errors.Incl((int) AsmErrors.AsmMisMatchParen);
+                        }
+                        else
+                        {
+                            srcline.Address.Term[srcline.Address.Length - 1].Kind = SaTermkinds.SaRParen;
+                            parenOpen = false;
+                        }
+                        break;
                 }
                 allowed = possible - allowed;
                 GetSym(srcline.Errors); // check trailing comment, parameters
             }
 
-            if ((srcline.Address.Length & 1) == 0) srcline.Errors.Incl((int)AsmErrors.AsmInvalidaddress);
+            if (parenOpen) srcline.Errors.Incl((int)AsmErrors.AsmMisMatchParen);
+
+            if ((srcline.Address.Length & 1) == 0) srcline.Errors.Incl((int) AsmErrors.AsmInvalidaddress);
+
         }
     }
 }
